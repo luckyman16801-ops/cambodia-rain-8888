@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Cambodia Rain 8888 Pro — MR TP AI Weather Intelligence Center. Real-time weather monitoring for Phnom Penh with 16-direction cloud scan and AI rain confidence engine." />
+  <meta name="theme-color" content="#060e1c" />
+  <title>Cambodia Rain 8888 Pro — MR TP AI Weather</title>
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://api.open-meteo.com" />
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Khmer:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- Main styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SIDEBAR NAVIGATION
+  ════════════════════════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+
+    <!-- Logo / Brand -->
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="logoGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#1a3d7c"/>
+              <stop offset="100%" stop-color="#060e1c"/>
+            </radialGradient>
+          </defs>
+          <circle cx="32" cy="32" r="32" fill="url(#logoGrad)"/>
+          <!-- Sun rays -->
+          <circle cx="20" cy="20" r="7" fill="#FFD700" opacity=".9"/>
+          <line x1="20" y1="9" x2="20" y2="13" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+          <line x1="20" y1="27" x2="20" y2="31" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+          <line x1="9"  y1="20" x2="13" y2="20" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+          <line x1="27" y1="20" x2="31" y2="20" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+          <!-- Rain cloud -->
+          <ellipse cx="42" cy="32" rx="12" ry="8"  fill="white" opacity=".95"/>
+          <ellipse cx="34" cy="34" rx="9"  ry="7"  fill="white" opacity=".95"/>
+          <ellipse cx="50" cy="34" rx="8"  ry="6"  fill="white" opacity=".95"/>
+          <!-- Rain drops -->
+          <line x1="36" y1="42" x2="34" y2="48" stroke="#4fc3f7" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="42" y1="43" x2="40" y2="49" stroke="#4fc3f7" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="48" y1="42" x2="46" y2="48" stroke="#4fc3f7" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">Cambodia Rain</span>
+        <span class="brand-version">8888 PRO V3</span>
+        <span class="brand-sub">MR TP AI Weather</span>
+      </div>
+    </div>
+
+    <!-- Navigation Items -->
+    <nav class="sidebar-nav" aria-label="Dashboard sections">
+      <button class="nav-item active" data-page="dashboard" onclick="App.showPage('dashboard')">
+        <span class="nav-icon">⚡</span>
+        <span class="nav-label en">Dashboard</span>
+        <span class="nav-label kh" style="display:none;">ផ្ទាំងគ្រប់គ្រង</span>
+      </button>
+      <button class="nav-item" data-page="compass" onclick="App.showPage('compass')">
+        <span class="nav-icon">🧭</span>
+        <span class="nav-label en">Storm Compass</span>
+        <span class="nav-label kh" style="display:none;">ត្រីវិស័យព្យុះ</span>
+      </button>
+      <button class="nav-item" data-page="forecast" onclick="App.showPage('forecast')">
+        <span class="nav-icon">🤖</span>
+        <span class="nav-label en">AI Forecast</span>
+        <span class="nav-label kh" style="display:none;">ការព្យាករ AI</span>
+      </button>
+      <button class="nav-item" data-page="radar" onclick="App.showPage('radar')">
+        <span class="nav-icon">🛰️</span>
+        <span class="nav-label en">Live Radar</span>
+        <span class="nav-label kh" style="display:none;">រ៉ាដារផ្ទាល់</span>
+      </button>
+      <button class="nav-item" data-page="rain" onclick="App.showPage('rain')">
+        <span class="nav-icon">🌧️</span>
+        <span class="nav-label en">Rain Analysis</span>
+        <span class="nav-label kh" style="display:none;">វិភាគភ្លៀង</span>
+      </button>
+      <button class="nav-item" data-page="clouds" onclick="App.showPage('clouds')">
+        <span class="nav-icon">☁️</span>
+        <span class="nav-label en">Cloud Tracker</span>
+        <span class="nav-label kh" style="display:none;">តាមដានពពក</span>
+      </button>
+      <button class="nav-item" data-page="telegram" onclick="App.showPage('telegram')">
+        <span class="nav-icon">📡</span>
+        <span class="nav-label en">Alerts</span>
+        <span class="nav-label kh" style="display:none;">ការជូនដំណឹង</span>
+      </button>
+      <button class="nav-item" data-page="settings" onclick="App.showPage('settings')">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label en">Settings</span>
+        <span class="nav-label kh" style="display:none;">ការកំណត់</span>
+      </button>
+    </nav>
+
+    <!-- Sidebar Footer -->
+    <div class="sidebar-footer">
+      <div class="clock-display">
+        <span class="clock-time" id="sidebar-clock">--:--:--</span>
+        <span class="clock-label">Phnom Penh (UTC+7)</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Sidebar overlay for mobile -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="App.closeSidebar()"></div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       MAIN CONTENT
+  ════════════════════════════════════════════════════════ -->
+  <main class="main-content" id="main-content">
+
+    <!-- Top Bar -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <button class="hamburger-btn" id="hamburger-btn" onclick="App.toggleSidebar()" aria-label="Toggle navigation">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="page-heading">
+          <h1 class="page-title" id="page-title">Dashboard</h1>
+          <div class="page-subtitle">
+            <span class="live-indicator"></span>
+            <span id="location-label">Phnom Penh, Cambodia</span>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <!-- Province selector -->
+        <div class="select-wrap">
+          <select class="province-select" id="province-select" onchange="App.changeProvince()" aria-label="Select province">
+            <option value="11.5641,104.9161,Phnom Penh">📍 Phnom Penh</option>
+            <option value="13.0957,103.2022,Siem Reap">Siem Reap</option>
+            <option value="13.1035,103.1980,Battambang">Battambang</option>
+            <option value="10.6232,103.5221,Sihanoukville">Sihanoukville</option>
+            <option value="11.4825,104.9740,Kampong Cham">Kampong Cham</option>
+            <option value="12.4539,104.9706,Kratie">Kratie</option>
+            <option value="12.7087,104.1815,Kampong Thom">Kampong Thom</option>
+            <option value="11.1638,104.7833,Takeo">Takeo</option>
+            <option value="12.2627,102.9763,Pursat">Pursat</option>
+            <option value="10.9956,104.7798,Kampot">Kampot</option>
+            <option value="11.7008,104.4643,Kandal">Kandal</option>
+            <option value="13.7339,107.0092,Ratanakiri">Ratanakiri</option>
+            <option value="12.5657,107.9993,Mondulkiri">Mondulkiri</option>
+          </select>
+        </div>
+        <!-- Language toggle -->
+        <div class="lang-toggle" role="group" aria-label="Language">
+          <button class="lang-btn active" id="btn-lang-en" onclick="App.setLang('en')">EN</button>
+          <button class="lang-btn" id="btn-lang-kh" onclick="App.setLang('kh')">ខ្មែរ</button>
+        </div>
+        <!-- Update time -->
+        <span class="update-stamp" id="update-stamp">Connecting…</span>
+      </div>
+    </header>
+
+    <!-- ─── GLOBAL ALERT BANNER ─── -->
+    <div class="alert-banner" id="alert-banner" style="display:none;" role="alert">
+      <span class="alert-icon" id="alert-icon">⚠️</span>
+      <div class="alert-content">
+        <strong id="alert-title">Alert</strong>
+        <span id="alert-message"></span>
+      </div>
+      <button class="alert-dismiss" onclick="this.parentElement.style.display='none'" aria-label="Dismiss">✕</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: DASHBOARD
+    ════════════════════════════════════════════════════ -->
+    <section class="page active" id="page-dashboard">
+
+      <!-- AI Risk Card (hero) -->
+      <div class="ai-hero" id="ai-hero-card">
+        <div class="ai-hero-left">
+          <div class="ai-risk-label" id="ai-risk-label">AI Rain Confidence</div>
+          <div class="ai-risk-score" id="ai-risk-score">--</div>
+          <div class="ai-risk-badge" id="ai-risk-badge">
+            <span class="risk-dot"></span>
+            <span id="ai-risk-text">Analyzing…</span>
+          </div>
+          <div class="ai-eta" id="ai-eta">Calculating risk…</div>
+        </div>
+        <div class="ai-hero-right">
+          <div class="ai-factors" id="ai-factors">
+            <div class="factor-row"><span class="factor-name en">Cloud Cover</span><span class="factor-name kh" style="display:none">ការគ្របដណ្ដប់ពពក</span><div class="factor-bar"><div class="factor-fill" id="fac-cloud"></div></div><span class="factor-val" id="fv-cloud">--</span></div>
+            <div class="factor-row"><span class="factor-name en">Rain Forecast</span><span class="factor-name kh" style="display:none">ការព្យាករភ្លៀង</span><div class="factor-bar"><div class="factor-fill" id="fac-rain"></div></div><span class="factor-val" id="fv-rain">--</span></div>
+            <div class="factor-row"><span class="factor-name en">Humidity</span><span class="factor-name kh" style="display:none">សំណើម</span><div class="factor-bar"><div class="factor-fill" id="fac-hum"></div></div><span class="factor-val" id="fv-hum">--</span></div>
+            <div class="factor-row"><span class="factor-name en">Pressure</span><span class="factor-name kh" style="display:none">សម្ពាធ</span><div class="factor-bar"><div class="factor-fill" id="fac-pres"></div></div><span class="factor-val" id="fv-pres">--</span></div>
+            <div class="factor-row"><span class="factor-name en">Wind</span><span class="factor-name kh" style="display:none">ខ្យល់</span><div class="factor-bar"><div class="factor-fill" id="fac-wind"></div></div><span class="factor-val" id="fv-wind">--</span></div>
+            <div class="factor-row"><span class="factor-name en">Active Sectors</span><span class="factor-name kh" style="display:none">ផ្នែកសកម្ម</span><div class="factor-bar"><div class="factor-fill" id="fac-sectors"></div></div><span class="factor-val" id="fv-sectors">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metric cards -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon">🌡️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Temperature</div>
+            <div class="metric-label kh" style="display:none">សីតុណ្ហភាព</div>
+            <div class="metric-value" id="m-temp">--</div>
+            <div class="metric-sub" id="m-feels">--</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">💧</div>
+          <div class="metric-body">
+            <div class="metric-label en">Humidity</div>
+            <div class="metric-label kh" style="display:none">សំណើម</div>
+            <div class="metric-value" id="m-hum">--</div>
+            <div class="metric-sub">Relative</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🌬️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Wind</div>
+            <div class="metric-label kh" style="display:none">ខ្យល់</div>
+            <div class="metric-value" id="m-wind">--</div>
+            <div class="metric-sub" id="m-winddir">--</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">📊</div>
+          <div class="metric-body">
+            <div class="metric-label en">Pressure</div>
+            <div class="metric-label kh" style="display:none">សម្ពាធ</div>
+            <div class="metric-value" id="m-pressure">--</div>
+            <div class="metric-sub">hPa</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">☁️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Cloud Cover</div>
+            <div class="metric-label kh" style="display:none">ការគ្របដណ្ដប់ពពក</div>
+            <div class="metric-value" id="m-cloud">--</div>
+            <div class="metric-sub">% sky</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🌡️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Dew Point</div>
+            <div class="metric-label kh" style="display:none">ចំណុចស្ណ</div>
+            <div class="metric-value" id="m-dew">--</div>
+            <div class="metric-sub">°C</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">☀️</div>
+          <div class="metric-body">
+            <div class="metric-label en">UV Index</div>
+            <div class="metric-label kh" style="display:none">សន្ទស្សន៍ UV</div>
+            <div class="metric-value" id="m-uv">--</div>
+            <div class="metric-sub" id="m-uv-label">--</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🌧️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Rain Now</div>
+            <div class="metric-label kh" style="display:none">ភ្លៀងឥឡូវ</div>
+            <div class="metric-value" id="m-rain-now">--</div>
+            <div class="metric-sub">mm/h</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Forecast + Today Summary -->
+      <div class="two-col-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">Next 8 Hours</h2>
+            <h2 class="card-title kh" style="display:none">8 ម៉ោងខាងមុខ</h2>
+          </div>
+          <div class="forecast-list" id="dash-forecast"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">Today Summary</h2>
+            <h2 class="card-title kh" style="display:none">សង្ខេបថ្ងៃនេះ</h2>
+          </div>
+          <div class="today-summary">
+            <div class="today-icon" id="today-icon">⏳</div>
+            <div class="today-desc" id="today-desc">Loading…</div>
+          </div>
+          <div class="row-list">
+            <div class="row-item"><span class="row-label en">Max Temp</span><span class="row-label kh" style="display:none">សីតុណ្ហភាពអតិបរមា</span><span class="row-val" id="t-max">--</span></div>
+            <div class="row-item"><span class="row-label en">Min Temp</span><span class="row-label kh" style="display:none">សីតុណ្ហភាពអប្បបរមា</span><span class="row-val" id="t-min">--</span></div>
+            <div class="row-item"><span class="row-label en">Sunrise</span><span class="row-label kh" style="display:none">ពេលព្រះអាទិត្យរះ</span><span class="row-val" id="t-sunrise">--</span></div>
+            <div class="row-item"><span class="row-label en">Sunset</span><span class="row-label kh" style="display:none">ពេលព្រះអាទិត្យលិច</span><span class="row-val" id="t-sunset">--</span></div>
+            <div class="row-item"><span class="row-label en">Rain Total</span><span class="row-label kh" style="display:none">ទឹកភ្លៀងសរុប</span><span class="row-val" id="t-rain-sum">--</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: STORM COMPASS PRO
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-compass">
+      <div class="compass-layout">
+        <div class="card compass-card">
+          <div class="card-header">
+            <h2 class="card-title en">Storm Compass Pro — 16-Direction Scan</h2>
+            <h2 class="card-title kh" style="display:none">ត្រីវិស័យព្យុះ — ស្កេន ១៦ ទិស</h2>
+            <div class="scan-status" id="compass-scan-status">
+              <span class="scan-dot"></span>
+              <span id="compass-scan-text">Ready to scan</span>
+            </div>
+          </div>
+          <div class="compass-wrapper">
+            <canvas id="compass-canvas" width="520" height="520" aria-label="Storm compass showing 16-direction cloud risk scan"></canvas>
+          </div>
+          <div class="compass-legend">
+            <span class="legend-item"><i class="dot dot-extreme"></i> Extreme / Storm</span>
+            <span class="legend-item"><i class="dot dot-high"></i> High Risk</span>
+            <span class="legend-item"><i class="dot dot-moderate"></i> Moderate</span>
+            <span class="legend-item"><i class="dot dot-low"></i> Low / Clear</span>
+          </div>
+          <button class="rescan-btn" onclick="App.runCompassScan()">
+            <span class="en">🔄 Rescan 100km</span>
+            <span class="kh" style="display:none">🔄 ស្កេនឡើងវិញ</span>
+          </button>
+        </div>
+
+        <div class="compass-sidebar">
+          <!-- Sector table -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title en">Regional Cloud Risk Scan</h2>
+              <h2 class="card-title kh" style="display:none">ការស្កេនហានិភ័យពពករំបូក</h2>
+            </div>
+            <div class="sector-table" id="sector-table">
+              <div class="loading-state"><div class="spinner"></div></div>
+            </div>
+          </div>
+
+          <!-- Summary -->
+          <div class="card mt-12">
+            <div class="card-header">
+              <h2 class="card-title en">Scan Summary</h2>
+              <h2 class="card-title kh" style="display:none">សង្ខេបការស្កេន</h2>
+            </div>
+            <div class="row-list">
+              <div class="row-item"><span class="row-label en">Coverage Radius</span><span class="row-val">100 km</span></div>
+              <div class="row-item"><span class="row-label en">Directions Scanned</span><span class="row-val">16</span></div>
+              <div class="row-item"><span class="row-label en">Active Sectors</span><span class="row-val" id="summary-active">--</span></div>
+              <div class="row-item"><span class="row-label en">Nearest Rain</span><span class="row-val" id="summary-nearest">--</span></div>
+              <div class="row-item"><span class="row-label en">Most Dangerous</span><span class="row-val" id="summary-danger">--</span></div>
+              <div class="row-item"><span class="row-label en">Est. ETA</span><span class="row-val" id="summary-eta">--</span></div>
+              <div class="row-item"><span class="row-label en">Overall Risk</span><span class="row-val" id="summary-risk">--</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: AI FORECAST
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-forecast">
+      <!-- Confidence cards -->
+      <div class="forecast-hero-grid">
+        <div class="confidence-card" id="conf-card-low">
+          <div class="conf-label">LOW RISK</div>
+          <div class="conf-range">0 – 40%</div>
+          <div class="conf-desc en">Clear conditions expected</div>
+          <div class="conf-desc kh" style="display:none">ស្ថានភាពប្រក្រតី</div>
+        </div>
+        <div class="confidence-card active-conf" id="conf-card-medium">
+          <div class="conf-label">MEDIUM RISK</div>
+          <div class="conf-range">41 – 70%</div>
+          <div class="conf-desc en">Monitor closely</div>
+          <div class="conf-desc kh" style="display:none">ត្រូវតាមដានដិត</div>
+        </div>
+        <div class="confidence-card" id="conf-card-high">
+          <div class="conf-label">HIGH RISK</div>
+          <div class="conf-range">71 – 100%</div>
+          <div class="conf-desc en">Rain imminent — take shelter</div>
+          <div class="conf-desc kh" style="display:none">ភ្លៀងជិតដល់ — ចូលជម្រក</div>
+        </div>
+      </div>
+
+      <div class="two-col-grid">
+        <!-- 7-day daily forecast -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">7-Day Forecast</h2>
+            <h2 class="card-title kh" style="display:none">ការព្យាករ ៧ ថ្ងៃ</h2>
+          </div>
+          <div id="daily-forecast"></div>
+        </div>
+
+        <!-- AI Analysis Report -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">AI Analysis Report</h2>
+            <h2 class="card-title kh" style="display:none">របាយការណ៍វិភាគ AI</h2>
+          </div>
+          <div class="ai-report" id="ai-report">Analyzing conditions…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: LIVE RADAR
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-radar">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title en">Live Radar — 100km Coverage</h2>
+          <h2 class="card-title kh" style="display:none">រ៉ាដារផ្ទាល់ — ត្រូវបណ្ដាលដ ១០០km</h2>
+          <div class="radar-controls">
+            <button class="pill-btn active" id="radar-btn-rain" onclick="App.setRadarLayer('rain')">🌧 Rain</button>
+            <button class="pill-btn" id="radar-btn-satellite" onclick="App.setRadarLayer('satellite')">🛰 Satellite</button>
+            <button class="pill-btn" onclick="App.resetRadarView()">📍 Reset View</button>
+          </div>
+        </div>
+        <div id="radar-map"></div>
+        <div class="radar-info">
+          <span>📍 Center: <strong>11.5641°N 104.9161°E — Phnom Penh</strong></span>
+          <span>🔵 Circle = 100km radius</span>
+          <span>🔄 Auto-updates every 10 min</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: RAIN ANALYSIS
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-rain">
+      <div class="metrics-grid-3">
+        <div class="metric-card large">
+          <div class="metric-icon">🌧️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Rain Now</div>
+            <div class="metric-label kh" style="display:none">ភ្លៀងឥឡូវ</div>
+            <div class="metric-value" id="rain-now-val">--</div>
+            <div class="metric-sub">mm/h</div>
+          </div>
+        </div>
+        <div class="metric-card large">
+          <div class="metric-icon">📊</div>
+          <div class="metric-body">
+            <div class="metric-label en">1-Hour Total</div>
+            <div class="metric-label kh" style="display:none">សរុប ១ ម៉ោង</div>
+            <div class="metric-value" id="rain-1h-val">--</div>
+            <div class="metric-sub">mm</div>
+          </div>
+        </div>
+        <div class="metric-card large">
+          <div class="metric-icon">🌊</div>
+          <div class="metric-body">
+            <div class="metric-label en">24-Hour Total</div>
+            <div class="metric-label kh" style="display:none">សរុប ២៤ ម៉ោង</div>
+            <div class="metric-value" id="rain-24h-val">--</div>
+            <div class="metric-sub">mm</div>
+          </div>
+        </div>
+      </div>
+      <div class="two-col-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">Rain Probability — Next 24h</h2>
+            <h2 class="card-title kh" style="display:none">ប្រូបាប៊ីលីតេភ្លៀង — ២៤ ម៉ោងខាងមុខ</h2>
+          </div>
+          <div class="forecast-list" id="rain-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">Rain Analysis</h2>
+            <h2 class="card-title kh" style="display:none">វិភាគភ្លៀង</h2>
+          </div>
+          <div class="analysis-text" id="rain-analysis">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: CLOUD TRACKER
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-clouds">
+      <div class="metrics-grid-4">
+        <div class="metric-card">
+          <div class="metric-icon">🌫️</div>
+          <div class="metric-body">
+            <div class="metric-label en">Low Clouds (0–2km)</div>
+            <div class="metric-label kh" style="display:none">ពពកទាប (0–2km)</div>
+            <div class="metric-value" id="cloud-low">--</div>
+            <div class="metric-sub">%</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">⛅</div>
+          <div class="metric-body">
+            <div class="metric-label en">Mid Clouds (2–6km)</div>
+            <div class="metric-label kh" style="display:none">ពពកកណ្ដាល (2–6km)</div>
+            <div class="metric-value" id="cloud-mid">--</div>
+            <div class="metric-sub">%</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">☁️</div>
+          <div class="metric-body">
+            <div class="metric-label en">High Clouds (6km+)</div>
+            <div class="metric-label kh" style="display:none">ពពកខ្ពស់ (6km+)</div>
+            <div class="metric-value" id="cloud-high">--</div>
+            <div class="metric-sub">%</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🌐</div>
+          <div class="metric-body">
+            <div class="metric-label en">Total Cover</div>
+            <div class="metric-label kh" style="display:none">ការគ្របដណ្ដប់សរុប</div>
+            <div class="metric-value" id="cloud-total">--</div>
+            <div class="metric-sub">%</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title en">Cloud Cover Forecast — Next 24h</h2>
+          <h2 class="card-title kh" style="display:none">ការព្យាករការគ្របដណ្ដប់ពពក — ២៤ ម៉ោង</h2>
+        </div>
+        <div class="forecast-list" id="cloud-bars"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: TELEGRAM ALERTS
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-telegram">
+      <div class="two-col-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">Telegram Alert Configuration</h2>
+            <h2 class="card-title kh" style="display:none">ការកំណត់ការជូនដំណឹង Telegram</h2>
+          </div>
+          <div class="tg-status-row">
+            <span class="en">Bot Status:</span>
+            <span class="kh" style="display:none">ស្ថានភាព Bot:</span>
+            <span class="badge badge-green" id="tg-bot-status">GitHub Actions ✅</span>
+          </div>
+          <div class="tg-channel-row">
+            <span>Channel: <strong>@cambodiarain8888</strong></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label en" for="tg-threshold">Alert when Rain Probability ≥</label>
+            <label class="form-label kh" style="display:none">ជូនដំណឹងនៅពេលប្រូបាប ≥</label>
+            <input class="form-input" type="number" id="tg-threshold" value="60" min="10" max="100" />
+          </div>
+          <div class="form-group">
+            <label class="form-label en" for="tg-interval">Send Interval</label>
+            <label class="form-label kh" style="display:none">រយៈពេលផ្ញើ</label>
+            <select class="form-input" id="tg-interval">
+              <option value="30">Every 30 minutes</option>
+              <option value="60" selected>Every 1 hour</option>
+              <option value="180">Every 3 hours</option>
+            </select>
+          </div>
+          <div class="btn-group">
+            <button class="btn-primary" onclick="App.sendTelegramNow()">📤 Send Alert Now</button>
+            <button class="btn-secondary" onclick="App.saveTelegramSettings()">💾 Save Settings</button>
+          </div>
+
+          <!-- GitHub Actions Info -->
+          <div class="info-box mt-16">
+            <div class="info-box-title">💡 24/7 Automatic Alerts</div>
+            <p class="info-box-text en">This project uses <strong>GitHub Actions</strong> to send weather alerts every 10 minutes automatically — no browser needed. Configure secrets in your GitHub repository settings.</p>
+            <p class="info-box-text kh" style="display:none">គម្រោងនេះប្រើ <strong>GitHub Actions</strong> ដើម្បីផ្ញើការជូនដំណឹងអំពីអាកាសធាតុស្វ័យប្រវត្តិ។</p>
+            <div class="secrets-list">
+              <div class="secret-item"><code>TELEGRAM_BOT_TOKEN</code></div>
+              <div class="secret-item"><code>TELEGRAM_CHAT_ID</code></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">Send Log</h2>
+            <h2 class="card-title kh" style="display:none">កំណត់ហេតុការផ្ញើ</h2>
+          </div>
+          <div class="tg-log" id="tg-log"><span class="log-info">Ready to send…</span></div>
+
+          <div class="card-header mt-16">
+            <h2 class="card-title en">Message Preview</h2>
+            <h2 class="card-title kh" style="display:none">មើលជាមុននូវសាររបស់</h2>
+          </div>
+          <div class="tg-preview" id="tg-preview">Loading preview…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: SETTINGS
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-settings">
+      <div class="two-col-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title en">General Settings</h2>
+            <h2 class="card-title kh" style="display:none">ការកំណត់ទូទៅ</h2>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="s-refresh">Auto-refresh Interval (minutes)</label>
+            <input class="form-input" type="number" id="s-refresh" value="5" min="1" max="60" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="s-units">Temperature Units</label>
+            <select class="form-input" id="s-units">
+              <option value="celsius" selected>Celsius (°C)</option>
+              <option value="fahrenheit">Fahrenheit (°F)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="s-lang">Interface Language</label>
+            <select class="form-input" id="s-lang" onchange="App.setLang(this.value)">
+              <option value="en">English</option>
+              <option value="kh">ខ្មែរ (Khmer)</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="App.saveSettings()">Save Settings</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">About Cambodia Rain 8888 Pro V3</h2>
+          </div>
+          <div class="about-list">
+            <div class="about-row"><span class="about-key">Version</span><span class="about-val">V3.0 PRO</span></div>
+            <div class="about-row"><span class="about-key">Author</span><span class="about-val">MR TP</span></div>
+            <div class="about-row"><span class="about-key">GPS Center</span><span class="about-val">11.5641°N 104.9161°E</span></div>
+            <div class="about-row"><span class="about-key">Coverage</span><span class="about-val">100km radius</span></div>
+            <div class="about-row"><span class="about-key">Weather API</span><span class="about-val">Open-Meteo (free)</span></div>
+            <div class="about-row"><span class="about-key">Radar</span><span class="about-val">RainViewer</span></div>
+            <div class="about-row"><span class="about-key">Directions</span><span class="about-val">16 (N/NNE/NE…NNW)</span></div>
+            <div class="about-row"><span class="about-key">Alerts</span><span class="about-val">GitHub Actions 10min</span></div>
+            <div class="about-row"><span class="about-key">API Key Required</span><span class="about-val">None ✅</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      MR TP · Cambodia Rain 8888 Pro V3 · 11.5641°N 104.9161°E · Open-Meteo + RainViewer
+    </footer>
+
+  </main><!-- /main-content -->
+
+  <!-- Scripts (order matters) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WPc=" crossorigin=""></script>
+  <script src="weather.js"></script>
+  <script src="stormCompass.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
