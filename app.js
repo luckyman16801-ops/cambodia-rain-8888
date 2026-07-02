@@ -32,6 +32,7 @@ const App = (() => {
     weatherData:    null,
     confidenceData: null,
     compassData:    [],
+    windCompassData: [],
     activeSectors:  0,
     refreshTimer:   null,
     tgTimer:        null,
@@ -67,6 +68,7 @@ const App = (() => {
   const PAGE_TITLES = {
     dashboard: 'Dashboard',
     compass:   'Storm Compass Pro',
+    wind:      'Wind Compass Pro',
     forecast:  'AI Forecast',
     radar:     'Live Radar',
     rain:      'Rain Analysis',
@@ -105,6 +107,17 @@ const App = (() => {
         StormCompass.drawCompass(
           document.getElementById('compass-canvas'),
           state.compassData
+        );
+      }
+    }
+    if (name === 'wind') {
+      if (state.windCompassData.length === 0) {
+        runWindCompassScan();
+      } else {
+        WindCompass.drawCompass(
+          document.getElementById('wind-canvas'),
+          state.windCompassData,
+          state.city
         );
       }
     }
@@ -175,6 +188,7 @@ const App = (() => {
 
     // Reset compass data (it's location-specific)
     state.compassData  = [];
+    state.windCompassData = [];
     state.activeSectors = 0;
 
     fetchAndRender();
@@ -541,6 +555,42 @@ const App = (() => {
   }
 
   /* ═══════════════════════════════════════════════════════
+     WIND COMPASS
+  ═══════════════════════════════════════════════════════ */
+  async function runWindCompassScan() {
+    const statusEl = document.getElementById('wind-scan-text');
+    const tableEl  = document.getElementById('wind-sector-table');
+    const canvas   = document.getElementById('wind-canvas');
+
+    if (statusEl) statusEl.textContent = 'Scanning 16 directions × 100km…';
+    if (tableEl)  tableEl.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+
+    try {
+      const scanData = await WindCompass.runScan(state.lat, state.lon);
+      state.windCompassData = scanData;
+
+      WindCompass.drawCompass(canvas, scanData, state.city);
+
+      if (tableEl) tableEl.innerHTML = WindCompass.buildSectorTableHTML(scanData);
+
+      const summary = WindCompass.calculateSummary(scanData);
+      setEl('wind-summary-active',   `${summary.activeSectors} / 16`);
+      setEl('wind-summary-strongest', summary.strongest);
+      setEl('wind-summary-avg',      summary.avgSpeed);
+      setEl('wind-summary-gust',     summary.maxGust);
+      setEl('wind-summary-risk',     summary.risk);
+
+      const ts = new Date().toLocaleTimeString('en-GB', { timeZone: CONFIG.TZ });
+      if (statusEl) statusEl.textContent = `✅ Last scan: ${ts} — 16 directions × 50km & 100km`;
+
+    } catch (err) {
+      console.error('[App] wind compass scan error:', err);
+      if (statusEl) statusEl.textContent = '⚠ Scan error — retrying…';
+      if (tableEl)  tableEl.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--red)">Scan failed. Check connection.</div>';
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
      RADAR MAP
   ═══════════════════════════════════════════════════════ */
   function circleOptions() {
@@ -821,6 +871,7 @@ const App = (() => {
     changeProvince,
     fetchAndRender,
     runCompassScan,
+    runWindCompassScan,
     setRadarLayer,
     resetRadarView,
     sendTelegramNow,
