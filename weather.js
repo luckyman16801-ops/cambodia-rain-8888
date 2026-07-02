@@ -220,9 +220,10 @@ const Weather = (() => {
     const params = new URLSearchParams({
       latitude: lat,
       longitude: lon,
-      current: 'weather_code,cloud_cover,rain,relative_humidity_2m',
+      current: 'weather_code,cloud_cover,rain,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
       hourly: 'precipitation_probability,weather_code,cloud_cover',
       timezone: 'Asia/Bangkok',
+      wind_speed_unit: 'kmh',
       forecast_days: 1
     });
 
@@ -238,18 +239,24 @@ const Weather = (() => {
       const raw = await response.json();
       const hourlyIdx = getCurrentHourIndex(raw.hourly?.time || []);
 
+      const windDeg = raw.current?.wind_direction_10m ?? 0;
+
       return {
         rainProb: safeGet(raw.hourly?.precipitation_probability, hourlyIdx),
         weatherCode: raw.current?.weather_code || 0,
         cloudCover: raw.current?.cloud_cover || 0,
         rain: raw.current?.rain || 0,
-        humidity: raw.current?.relative_humidity_2m || 0
+        humidity: raw.current?.relative_humidity_2m || 0,
+        windSpeed: raw.current?.wind_speed_10m ?? 0,
+        windGust: raw.current?.wind_gusts_10m ?? 0,
+        windDeg: windDeg,
+        windDir: windDirection(windDeg)
       };
 
     } catch (err) {
       clearTimeout(timeout);
       // Return neutral data on failure (don't crash compass)
-      return { rainProb: 0, weatherCode: 0, cloudCover: 0, rain: 0, humidity: 0 };
+      return { rainProb: 0, weatherCode: 0, cloudCover: 0, rain: 0, humidity: 0, windSpeed: 0, windGust: 0, windDeg: 0, windDir: 'N' };
     }
   }
 
