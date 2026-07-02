@@ -75,6 +75,11 @@
         <span class="nav-label en">Storm Compass</span>
         <span class="nav-label kh" style="display:none;">ត្រីវិស័យព្យុះ</span>
       </button>
+      <button class="nav-item" data-page="wind" onclick="App.showPage('wind')">
+        <span class="nav-icon">💨</span>
+        <span class="nav-label en">Wind Compass</span>
+        <span class="nav-label kh" style="display:none;">ត្រីវិស័យខ្យល់</span>
+      </button>
       <button class="nav-item" data-page="forecast" onclick="App.showPage('forecast')">
         <span class="nav-icon">🤖</span>
         <span class="nav-label en">AI Forecast</span>
@@ -365,6 +370,67 @@
               <div class="row-item"><span class="row-label en">Most Dangerous</span><span class="row-val" id="summary-danger">--</span></div>
               <div class="row-item"><span class="row-label en">Est. ETA</span><span class="row-val" id="summary-eta">--</span></div>
               <div class="row-item"><span class="row-label en">Overall Risk</span><span class="row-val" id="summary-risk">--</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         PAGE: WIND COMPASS PRO
+    ════════════════════════════════════════════════════ -->
+    <section class="page" id="page-wind">
+      <div class="compass-layout">
+        <div class="card compass-card">
+          <div class="card-header">
+            <h2 class="card-title en">Wind Compass Pro — 16-Direction Scan</h2>
+            <h2 class="card-title kh" style="display:none">ត្រីវិស័យខ្យល់ — ស្កេន ១៦ ទិស</h2>
+            <div class="scan-status" id="wind-scan-status">
+              <span class="scan-dot"></span>
+              <span id="wind-scan-text">Ready to scan</span>
+            </div>
+          </div>
+          <div class="compass-wrapper">
+            <canvas id="wind-canvas" width="520" height="520" aria-label="Wind compass showing 16-direction wind speed and direction scan"></canvas>
+          </div>
+          <div class="compass-legend">
+            <span class="legend-item"><i class="dot dot-extreme"></i> Storm (60+ km/h)</span>
+            <span class="legend-item"><i class="dot dot-high"></i> Strong (40–59 km/h)</span>
+            <span class="legend-item"><i class="dot dot-moderate"></i> Moderate (20–39 km/h)</span>
+            <span class="legend-item"><i class="dot dot-low"></i> Light / Calm</span>
+          </div>
+          <button class="rescan-btn" onclick="App.runWindCompassScan()">
+            <span class="en">🔄 Rescan 100km</span>
+            <span class="kh" style="display:none">🔄 ស្កេនឡើងវិញ</span>
+          </button>
+        </div>
+
+        <div class="compass-sidebar">
+          <!-- Sector table -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title en">Regional Wind Scan</h2>
+              <h2 class="card-title kh" style="display:none">ការស្កេនខ្យល់រំបូក</h2>
+            </div>
+            <div class="sector-table" id="wind-sector-table">
+              <div class="loading-state"><div class="spinner"></div></div>
+            </div>
+          </div>
+
+          <!-- Summary -->
+          <div class="card mt-12">
+            <div class="card-header">
+              <h2 class="card-title en">Scan Summary</h2>
+              <h2 class="card-title kh" style="display:none">សង្ខេបការស្កេន</h2>
+            </div>
+            <div class="row-list">
+              <div class="row-item"><span class="row-label en">Coverage Radius</span><span class="row-val">100 km</span></div>
+              <div class="row-item"><span class="row-label en">Directions Scanned</span><span class="row-val">16</span></div>
+              <div class="row-item"><span class="row-label en">Active Sectors</span><span class="row-val" id="wind-summary-active">--</span></div>
+              <div class="row-item"><span class="row-label en">Strongest Sector</span><span class="row-val" id="wind-summary-strongest">--</span></div>
+              <div class="row-item"><span class="row-label en">Average Speed</span><span class="row-val" id="wind-summary-avg">--</span></div>
+              <div class="row-item"><span class="row-label en">Max Gust</span><span class="row-val" id="wind-summary-gust">--</span></div>
+              <div class="row-item"><span class="row-label en">Overall Wind Risk</span><span class="row-val" id="wind-summary-risk">--</span></div>
             </div>
           </div>
         </div>
@@ -671,6 +737,7 @@
   crossorigin=""></script>
   <script src="weather.js"></script>
   <script src="stormCompass.js"></script>
+  <script src="windCompass.js"></script>
   <script src="app.js"></script>
 
 </body>
