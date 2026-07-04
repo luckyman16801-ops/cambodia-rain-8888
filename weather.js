@@ -403,7 +403,16 @@ const Weather = (() => {
     else if (wmoCode >= 61) bonus = 10;
     else if (wmoCode >= 51) bonus = 5;
 
-    const total = Math.min(100, rawTotal + bonus);
+    let total = Math.min(100, rawTotal + bonus);
+
+    // Reality check: don't let humidity/cloud/forecast alone claim HIGH RISK
+    // if no rain is actually falling right now at this location.
+    const actualRainNow = current.precipitation || 0;
+    if (actualRainNow === 0) {
+      total = Math.min(total, 55);
+    } else if (actualRainNow > 0 && actualRainNow < 0.5) {
+      total = Math.max(total, 60);
+    }
 
     // Risk level
     let level, label, color;
