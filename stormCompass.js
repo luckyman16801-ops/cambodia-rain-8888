@@ -41,9 +41,13 @@ const StormCompass = (() => {
   ];
 
   // km → approximate degrees offset
-  // 50km: ~0.45°, 100km: ~0.90°
   const KM_TO_DEG_LAT = 1 / 111;    // 1° lat = 111km
   const KM_TO_DEG_LON = 1 / 108;    // 1° lon ≈ 108km at 11.5°N
+
+  // Distance rings checked along each of the 16 directions, from very close
+  // to your exact location out to 100km. Finer near you, wider further out
+  // (matches how much detail actually matters at each range).
+  const RINGS_KM = [0.5, 2, 5, 10, 20, 35, 50, 75, 100];
 
   /**
    * Calculate GPS coordinates for a direction + distance
@@ -128,48 +132,54 @@ const StormCompass = (() => {
   let isScanning = false;
 
   /**
-   * Run the full 16-direction scan
-   * Fetches 32 points in parallel (16 dirs × 2 distances)
+   * Run the full 16-direction scan, checking RINGS_KM distances along each
+   * direction (0.5km → 100km) in ONE batched API call, then walking each
+   * direction from closest to farthest to find the actual distance to rain.
    * @returns {Promise<Array>} Scan results per direction
    */
   async function runScan() {
     if (isScanning) return lastScanData;
     isScanning = true;
 
-    // Build all fetch promises: for each direction, fetch 50km and 100km points
-    const scanPromises = SCAN_DIRECTIONS.map(async (sd) => {
-      const pt50  = scanPoint(sd.deg, 50);
-      const pt100 = scanPoint(sd.deg, 100);
-
-      const [data50, data100] = await Promise.allSettled([
-        Weather.fetchPointWeather(pt50[0], pt50[1]),
-        Weather.fetchPointWeather(pt100[0], pt100[1])
-      ]);
-
-      const d50  = data50.status  === 'fulfilled' ? data50.value  : defaultPoint();
-      const d100 = data100.status === 'fulfilled' ? data100.value : defaultPoint();
-
-      const risk50  = classifyRisk(d50);
-      const risk100 = classifyRisk(d100);
-
-      // Take the higher risk of the two distances
-      const dominantRisk = risk50.score >= risk100.score ? risk50 : risk100;
-      const dominantDist = risk50.score >= risk100.score ? 50 : 100;
-
-      return {
-        dir: sd.dir,
-        label: sd.label,
-        deg: sd.deg,
-        d50:   { ...d50,  risk: risk50,  km: 50 },
-        d100:  { ...d100, risk: risk100, km: 100 },
-        dominant: { ...dominantRisk, km: dominantDist },
-        rainProb: Math.max(d50.rainProb, d100.rainProb),
-        cloudCover: Math.max(d50.cloudCover, d100.cloudCover)
-      };
+    // Build the full flat list of points: 16 directions × RINGS_KM.length
+    const flatPoints = [];
+    SCAN_DIRECTIONS.forEach(sd => {
+      RINGS_KM.forEach(km => flatPoints.push(scanPoint(sd.deg, km)));
     });
 
     try {
-      lastScanData = await Promise.all(scanPromises);
+      const flatData = await Weather.fetchMultiPointWeather(flatPoints);
+
+      lastScanData = SCAN_DIRECTIONS.map((sd, dirIdx) => {
+        const offset = dirIdx * RINGS_KM.length;
+        const rings = RINGS_KM.map((km, i) => {
+          const d = flatData[offset + i] || defaultPoint();
+          return { ...d, km, risk: classifyRisk(d) };
+        });
+
+        // Walk outward from closest ring, find the first one that's actually
+        // showing rain risk (moderate or worse), that's the real distance.
+        const rainRing = rings.find(r => r.risk.level === 'moderate' || r.risk.level === 'high' || r.risk.level === 'extreme');
+        const nearestRainKm = rainRing ? rainRing.km : null;
+
+        // If nothing found, fall back to the highest-scoring ring so a "low"
+        // cloud warning still shows up instead of just picking the last ring blindly.
+        const bestRing = rainRing || [...rings].sort((a, b) => b.risk.score - a.risk.score)[0];
+
+        const maxRainProb = Math.max(...rings.map(r => r.rainProb));
+        const maxCloudCover = Math.max(...rings.map(r => r.cloudCover));
+
+        return {
+          dir: sd.dir,
+          label: sd.label,
+          deg: sd.deg,
+          rings,
+          nearestRainKm,
+          dominant: { ...bestRing.risk, km: bestRing.km },
+          rainProb: maxRainProb,
+          cloudCover: maxCloudCover
+        };
+      });
     } catch (err) {
       console.error('[StormCompass] Scan error:', err);
       lastScanData = [];
@@ -216,8 +226,9 @@ const StormCompass = (() => {
 
     // ── RINGS ──────────────────────────────────────────
     const rings = [
-      { frac: 0.33, label: '33km', labelColor: 'rgba(80,140,220,0.4)' },
-      { frac: 0.67, label: '67km', labelColor: 'rgba(80,140,220,0.4)' },
+      { frac: 0.05, label: '5km', labelColor: 'rgba(80,140,220,0.4)' },
+      { frac: 0.20, label: '20km', labelColor: 'rgba(80,140,220,0.4)' },
+      { frac: 0.50, label: '50km', labelColor: 'rgba(80,140,220,0.5)' },
       { frac: 1.0,  label: '100km', labelColor: 'rgba(80,140,220,0.6)' }
     ];
 
@@ -361,112 +372,105 @@ const StormCompass = (() => {
   }
 
   /**
-   * Draw cloud/rain indicators for 50km and 100km points
+   * Draw a single cloud/rain indicator at the dominant (nearest-rain, or
+   * highest-risk if clear) ring distance for this direction.
    */
   function drawSectorPoints(ctx, cx, cy, maxR, sector) {
-    [sector.d50, sector.d100].forEach(pt => {
-      const frac = pt.km / 100;
-      const angle = (sector.deg - 90) * (Math.PI / 180);
-      const r = frac * maxR;
-      const px = cx + Math.cos(angle) * r;
-      const py = cy + Math.sin(angle) * r;
+    const pt = sector.dominant; // { ...risk, km }
+    const frac = Math.min(pt.km / 100, 1);
+    const angle = (sector.deg - 90) * (Math.PI / 180);
+    const r = frac * maxR;
+    const px = cx + Math.cos(angle) * r;
+    const py = cy + Math.sin(angle) * r;
 
-      const risk = pt.risk;
-      const size = pt.km === 50 ? 14 : 12;
+    const risk = pt;
+    const size = 13;
 
-      // Glow
-      const glow = ctx.createRadialGradient(px, py, 1, px, py, size + 8);
-      const glowA = risk.score > 60 ? 0.3 : risk.score > 30 ? 0.18 : 0.1;
-      glow.addColorStop(0, risk.color + Math.round(glowA * 255).toString(16).padStart(2, '0'));
-      glow.addColorStop(1, 'transparent');
+    // Glow
+    const glow = ctx.createRadialGradient(px, py, 1, px, py, size + 8);
+    const glowA = risk.score > 60 ? 0.3 : risk.score > 30 ? 0.18 : 0.1;
+    glow.addColorStop(0, risk.color + Math.round(glowA * 255).toString(16).padStart(2, '0'));
+    glow.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(px, py, size + 8, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    // Cloud body (3 overlapping circles)
+    ctx.save();
+    ctx.translate(px, py);
+
+    const cloudFill = risk.level === 'extreme' ? 'rgba(150,30,10,0.75)' :
+                      risk.level === 'high'     ? 'rgba(130,50,20,0.65)' :
+                      risk.level === 'moderate' ? 'rgba(110,80,10,0.60)' :
+                      risk.level === 'low'      ? 'rgba(30,70,130,0.50)' :
+                                                  'rgba(180,210,240,0.15)';
+
+    const circles = [[0, 0, size * 0.7], [size * 0.5, -size * 0.3, size * 0.5], [-size * 0.5, -size * 0.3, size * 0.44]];
+    circles.forEach(([ox, oy, rs]) => {
       ctx.beginPath();
-      ctx.arc(px, py, size + 8, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
+      ctx.arc(ox, oy, rs, 0, Math.PI * 2);
+      ctx.fillStyle = cloudFill;
       ctx.fill();
-
-      // Cloud body (3 overlapping circles)
-      ctx.save();
-      ctx.translate(px, py);
-
-      const cloudFill = risk.level === 'extreme' ? 'rgba(150,30,10,0.75)' :
-                        risk.level === 'high'     ? 'rgba(130,50,20,0.65)' :
-                        risk.level === 'moderate' ? 'rgba(110,80,10,0.60)' :
-                        risk.level === 'low'      ? 'rgba(30,70,130,0.50)' :
-                                                    'rgba(180,210,240,0.15)';
-
-      const circles = [[0, 0, size * 0.7], [size * 0.5, -size * 0.3, size * 0.5], [-size * 0.5, -size * 0.3, size * 0.44]];
-      circles.forEach(([ox, oy, rs]) => {
-        ctx.beginPath();
-        ctx.arc(ox, oy, rs, 0, Math.PI * 2);
-        ctx.fillStyle = cloudFill;
-        ctx.fill();
-        ctx.strokeStyle = risk.color + '88';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      });
-
-      // Rain drops if moderate+
-      if (risk.level === 'moderate' || risk.level === 'high' || risk.level === 'extreme') {
-        ctx.strokeStyle = 'rgba(64,196,255,0.7)';
-        ctx.lineWidth = 1.5;
-        ctx.lineCap = 'round';
-        for (let i = 0; i < 3; i++) {
-          ctx.beginPath();
-          ctx.moveTo(-6 + i * 6, size * 0.5);
-          ctx.lineTo(-8 + i * 6, size * 0.9);
-          ctx.stroke();
-        }
-      }
-
-      // Lightning bolt for storm/extreme
-      if (risk.level === 'extreme') {
-        ctx.beginPath();
-        ctx.moveTo(2, size * 0.35);
-        ctx.lineTo(-3, size * 0.65);
-        ctx.lineTo(2, size * 0.65);
-        ctx.lineTo(-3, size);
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 2;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-      }
-
-      ctx.restore();
-
-      // Risk label above the cloud
-      if (pt.rainProb >= 20) {
-        ctx.font = 'bold 10px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillStyle = risk.color;
-        ctx.fillText(`${Math.round(pt.rainProb)}%`, px, py - (size + 6));
-        ctx.textBaseline = 'alphabetic';
-      }
+      ctx.strokeStyle = risk.color + '88';
+      ctx.lineWidth = 1;
+      ctx.stroke();
     });
+
+    // Rain drops if moderate+
+    if (risk.level === 'moderate' || risk.level === 'high' || risk.level === 'extreme') {
+      ctx.strokeStyle = 'rgba(64,196,255,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-6 + i * 6, size * 0.5);
+        ctx.lineTo(-8 + i * 6, size * 0.9);
+        ctx.stroke();
+      }
+    }
+
+    // Lightning bolt for storm/extreme
+    if (risk.level === 'extreme') {
+      ctx.beginPath();
+      ctx.moveTo(2, size * 0.35);
+      ctx.lineTo(-3, size * 0.65);
+      ctx.lineTo(2, size * 0.65);
+      ctx.lineTo(-3, size);
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Distance + risk label above the cloud (this is the real measured distance now)
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = risk.color;
+    const distLabel = sector.nearestRainKm !== null ? `${sector.nearestRainKm}km` : `${pt.km}km+ clear`;
+    ctx.fillText(distLabel, px, py - (size + 6));
+    ctx.textBaseline = 'alphabetic';
+
+    // Ray from center to the dominant point, colored by risk
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(px, py);
+    ctx.strokeStyle = risk.color + (sector.nearestRainKm !== null ? '60' : '25');
+    ctx.setLineDash(sector.nearestRainKm !== null ? [] : [4, 5]);
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     // Arrow from center if there's notable risk
     if (sector.dominant.score >= 35) {
-      const angle = (sector.deg - 90) * (Math.PI / 180);
-      const frac = sector.dominant.km / 100;
-      const ex = cx + Math.cos(angle) * frac * maxR;
-      const ey = cy + Math.sin(angle) * frac * maxR;
-
-      // Dashed line
+      const aa = Math.atan2(py - cy, px - cx);
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(ex, ey);
-      ctx.strokeStyle = sector.dominant.color + '50';
-      ctx.setLineDash([6, 4]);
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Arrowhead
-      const aa = Math.atan2(ey - cy, ex - cx);
-      ctx.beginPath();
-      ctx.moveTo(ex, ey);
-      ctx.lineTo(ex - 8 * Math.cos(aa - 0.35), ey - 8 * Math.sin(aa - 0.35));
-      ctx.lineTo(ex - 8 * Math.cos(aa + 0.35), ey - 8 * Math.sin(aa + 0.35));
+      ctx.moveTo(px, py);
+      ctx.lineTo(px - 8 * Math.cos(aa - 0.35), py - 8 * Math.sin(aa - 0.35));
+      ctx.lineTo(px - 8 * Math.cos(aa + 0.35), py - 8 * Math.sin(aa + 0.35));
       ctx.closePath();
       ctx.fillStyle = sector.dominant.color + '70';
       ctx.fill();
@@ -487,13 +491,16 @@ const StormCompass = (() => {
       const risk = sector.dominant;
       const rp = Math.round(sector.rainProb);
       const cc = Math.round(sector.cloudCover);
+      const distText = sector.nearestRainKm !== null
+        ? `Rain at ${sector.nearestRainKm}km`
+        : `Clear to 100km`;
 
       return `
         <div class="sector-row ${risk.bgClass}">
           <span class="sector-dir">${sector.dir}</span>
           <div class="sector-info">
             <span class="sector-type">${risk.cloudType}</span>
-            <span class="sector-sub">Rain ${rp}% · Cloud ${cc}% · ${sector.dominant.km}km</span>
+            <span class="sector-sub">${distText} · Rain ${rp}% · Cloud ${cc}%</span>
           </div>
           <span class="sector-risk ${risk.bgClass}">${risk.label}</span>
         </div>
@@ -512,32 +519,29 @@ const StormCompass = (() => {
     const active = scanData.filter(s => s.dominant.level !== 'none' && s.dominant.level !== 'low');
     const dangerous = [...scanData].sort((a, b) => b.dominant.score - a.dominant.score)[0];
 
-    const highRiskSectors = scanData.filter(s =>
-      s.dominant.level === 'high' || s.dominant.level === 'extreme'
-    );
+    // Real nearest-rain distance across all 16 directions
+    const withRain = scanData.filter(s => s.nearestRainKm !== null);
+    const closest = withRain.length
+      ? withRain.reduce((a, b) => (a.nearestRainKm < b.nearestRainKm ? a : b))
+      : null;
 
     let eta = 'No immediate rain';
-    if (highRiskSectors.length >= 4) {
-      eta = 'Rain imminent in 1–2 hours';
-    } else if (highRiskSectors.length >= 2) {
-      eta = 'Rain likely in 2–4 hours';
-    } else if (active.length >= 3) {
-      eta = 'Rain possible in 3–5 hours';
+    if (closest) {
+      // Assumes a typical tropical convective cell drift of ~20km/h
+      const hoursAway = closest.nearestRainKm / 20;
+      if (hoursAway <= 0.5) eta = `Rain imminent — ~${closest.nearestRainKm}km away`;
+      else if (hoursAway <= 1.5) eta = `Rain likely within 1–2 hours (${closest.nearestRainKm}km away)`;
+      else if (hoursAway <= 3) eta = `Rain possible in 2–3 hours (${closest.nearestRainKm}km away)`;
+      else eta = `Distant activity — ${closest.nearestRainKm}km away, several hours out`;
     } else if (active.length >= 1) {
-      eta = 'Monitor — light activity nearby';
+      eta = 'Monitor — light cloud activity nearby, no rain detected yet';
     }
 
     const overallScore = scanData.reduce((sum, s) => sum + s.dominant.score, 0) / scanData.length;
     const overallRisk = overallScore >= 70 ? '🔴 HIGH' :
                         overallScore >= 40 ? '🟡 MEDIUM' : '🟢 LOW';
 
-    const nearestRain = scanData
-      .filter(s => s.d50.rainProb >= 30)
-      .map(s => `${s.dir} (50km)`)[0] ||
-      scanData
-      .filter(s => s.d100.rainProb >= 30)
-      .map(s => `${s.dir} (100km)`)[0] ||
-      'None detected';
+    const nearestRain = closest ? `${closest.dir} (${closest.nearestRainKm}km)` : 'None detected within 100km';
 
     return {
       activeSectors: active.length,
