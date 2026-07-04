@@ -31,6 +31,7 @@ const App = (() => {
     lang: 'en',
     weatherData:    null,
     confidenceData: null,
+    consensusData:  null,
     compassData:    [],
     windCompassData: [],
     activeSectors:  0,
@@ -208,18 +209,24 @@ const App = (() => {
     setUpdateStamp('Updating…');
 
     try {
-      const data = await Weather.fetchWeather(state.lat, state.lon);
+      const [data, consensus] = await Promise.all([
+        Weather.fetchWeather(state.lat, state.lon),
+        Weather.fetchModelConsensus(state.lat, state.lon)
+      ]);
       state.weatherData = data;
+      state.consensusData = consensus;
 
-      // Calculate AI confidence (use current active sectors count)
+      // Calculate AI confidence (use current active sectors count + model consensus)
       const rainProb = data.hourly.rainProb[0] || 0;
       state.confidenceData = Weather.calculateConfidence(
         data.current,
         rainProb,
-        state.activeSectors
+        state.activeSectors,
+        consensus
       );
 
       renderAll(data, state.confidenceData);
+      renderModelConsensus(consensus);
 
       const ts = new Date().toLocaleTimeString('en-GB', { timeZone: CONFIG.TZ });
       setUpdateStamp(`Updated ${ts}`);
@@ -264,7 +271,7 @@ const App = (() => {
       banner.className = 'alert-banner level-high';
       iconEl.textContent = '🔴';
       titleEl.textContent = 'HIGH RAIN RISK';
-      msgEl.textContent = ` ${confidence.total}% confidence — ${wmo.desc}. Cloud: ${data.current.cloudCover}%. Humidity: ${data.current.humidity}%. ${confidence.eta}`;
+      msgEl.textContent = ` ${confidence.total}% confidence — ${wmo.desc}. Cloud: ${data.current.cloudCoverLow ?? data.current.cloudCover}%. Humidity: ${data.current.humidity}%. ${confidence.eta}`;
     } else if (confidence.level === 'medium') {
       banner.style.display = 'flex';
       banner.className = 'alert-banner level-medium';
@@ -276,7 +283,58 @@ const App = (() => {
     }
   }
 
-  /* ─── DASHBOARD ──────────────────────────────────────── */
+  /* ─── MODEL CONSENSUS PANEL (dynamically injected, no HTML edits needed) ─── */
+  function renderModelConsensus(consensus) {
+    let panel = document.getElementById('model-consensus-panel');
+
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'model-consensus-panel';
+      panel.style.cssText = 'background:#0d1830;border:1px solid rgba(64,196,255,0.15);border-radius:12px;padding:16px 20px;margin:16px 0;';
+      const heroCard = document.getElementById('ai-hero-card');
+      const banner = document.getElementById('alert-banner');
+      if (heroCard && heroCard.parentElement) {
+        heroCard.parentElement.insertBefore(panel, heroCard.nextSibling);
+      } else if (banner && banner.parentElement) {
+        banner.parentElement.insertBefore(panel, banner.nextSibling);
+      } else {
+        document.body.prepend(panel);
+      }
+    }
+
+    if (!consensus || consensus.totalModels === 0) {
+      panel.innerHTML = '<div style="color:#8aa;font-size:12px;">Model consensus unavailable right now.</div>';
+      return;
+    }
+
+    const badgeColor = consensus.consensus === 'dry' ? '#00e676'
+      : consensus.consensus === 'rain' ? '#FF5252'
+      : '#FFB300';
+    const badgeText = consensus.consensus === 'dry' ? 'MOSTLY DRY'
+      : consensus.consensus === 'rain' ? 'RAIN LIKELY'
+      : 'MODELS DISAGREE';
+
+    const rows = consensus.models.map(m => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px;">
+        <span style="color:#cdd;">${m.name}</span>
+        <span style="color:${m.isRaining ? '#FF5252' : '#40C4FF'};">
+          ${m.isRaining ? '🌧 Rain' : '☀ Clear'} · ${m.precip.toFixed(1)}mm · cloud ${Math.round(m.cloudLow)}%
+        </span>
+      </div>
+    `).join('');
+
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="color:#FFD700;font-size:12px;font-weight:bold;letter-spacing:0.5px;">MULTI-MODEL CONSENSUS</span>
+        <span style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}55;border-radius:6px;padding:2px 10px;font-size:11px;font-weight:bold;">
+          ${consensus.rainingCount}/${consensus.totalModels} agree — ${badgeText}
+        </span>
+      </div>
+      ${rows}
+    `;
+  }
+
+
   function renderDashboard(data, confidence) {
     const c = data.current;
     const rainProb = data.hourly.rainProb[0] || 0;
@@ -298,7 +356,7 @@ const App = (() => {
 
     // Factor bars
     const p = confidence.percents;
-    setFactorBar('cloud',    p.cloud,    `${c.cloudCover}%`);
+    setFactorBar('cloud',    p.cloud,    `${c.cloudCoverLow ?? c.cloudCover}%`);
     setFactorBar('rain',     p.rain,     `${rainProb}%`);
     setFactorBar('hum',      p.humidity, `${c.humidity}%`);
     setFactorBar('pres',     p.pressure, `${c.pressure} hPa`);
@@ -569,7 +627,8 @@ const App = (() => {
         state.confidenceData = Weather.calculateConfidence(
           state.weatherData.current,
           rainProb,
-          summary.activeSectors
+          summary.activeSectors,
+          state.consensusData
         );
         // Refresh AI hero card
         renderDashboard(state.weatherData, state.confidenceData);
