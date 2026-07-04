@@ -216,6 +216,65 @@ const Weather = (() => {
    * @param {number} lon
    * @returns {Promise<Object>}
    */
+  /**
+   * Cross-check with 3 independent global weather models (GFS, ICON, ECMWF)
+   * instead of trusting a single model's forecast. Used as a second opinion
+   * to catch cases where Open-Meteo's default "best_match" model disagrees
+   * with what other major forecast systems say for the same point.
+   */
+  async function fetchModelConsensus(lat, lon) {
+    const MODELS = [
+      { key: 'gfs_seamless',   label: 'GFS (US)' },
+      { key: 'icon_seamless',  label: 'ICON (Germany)' },
+      { key: 'ecmwf_ifs025',   label: 'ECMWF (EU)' }
+    ];
+
+    const params = new URLSearchParams({
+      latitude: lat,
+      longitude: lon,
+      hourly: 'precipitation,cloud_cover_low,weather_code',
+      models: MODELS.map(m => m.key).join(','),
+      timezone: 'Asia/Bangkok',
+      forecast_days: 1
+    });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(`${API_BASE}?${params}`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`API ${response.status}`);
+
+      const raw = await response.json();
+      const h = raw.hourly || {};
+      const hourlyIdx = getCurrentHourIndex(h.time || []);
+
+      const results = MODELS.map(m => {
+        const precip = safeGet(h[`precipitation_${m.key}`], hourlyIdx) || 0;
+        const cloudLow = safeGet(h[`cloud_cover_low_${m.key}`], hourlyIdx) || 0;
+        const wmoCode = safeGet(h[`weather_code_${m.key}`], hourlyIdx) || 0;
+        const isRaining = precip >= 0.2 || wmoCode >= 61;
+        return { name: m.label, precip, cloudLow, wmoCode, isRaining };
+      }).filter(r => r.precip !== null && !isNaN(r.precip));
+
+      const rainingCount = results.filter(r => r.isRaining).length;
+      let consensus;
+      if (results.length === 0) consensus = 'unknown';
+      else if (rainingCount === 0) consensus = 'dry';
+      else if (rainingCount === results.length) consensus = 'rain';
+      else consensus = 'mixed';
+
+      return { models: results, rainingCount, totalModels: results.length, consensus };
+
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error('[Weather] Model consensus fetch failed:', err);
+      return { models: [], rainingCount: 0, totalModels: 0, consensus: 'unknown' };
+    }
+  }
+
+
   async function fetchPointWeather(lat, lon) {
     const params = new URLSearchParams({
       latitude: lat,
@@ -281,6 +340,7 @@ const Weather = (() => {
       rain:         c.rain ?? 0,
       weatherCode:  c.weather_code ?? 0,
       cloudCover:   c.cloud_cover ?? 0,
+      cloudCoverLow: safeGet(h.cloud_cover_low, hourlyIdx),
       windSpeed:    c.wind_speed_10m ?? 0,
       windDeg:      c.wind_direction_10m ?? 0,
       windDir:      windDirection(c.wind_direction_10m ?? 0),
@@ -362,11 +422,14 @@ const Weather = (() => {
    * @param {number} activeSectors - Number of active rain sectors from compass
    * @returns {Object} Detailed scoring breakdown
    */
-  function calculateConfidence(current, rainProb, activeSectors = 0) {
+  function calculateConfidence(current, rainProb, activeSectors = 0, consensus = null) {
     const scores = {};
 
     // Factor 1: Cloud Cover (max 20 points)
-    const cc = current.cloudCover || 0;
+    // Use LOW-level cloud cover, not total — total cloud_cover includes thin
+    // high-altitude cirrus that can read 100% while the sky looks clear.
+    // Low clouds are the dark, rain-bearing kind you can actually see.
+    const cc = (current.cloudCoverLow ?? current.cloudCover) || 0;
     scores.cloud = cc >= 85 ? 20 : cc >= 70 ? 16 : cc >= 50 ? 11 : cc >= 30 ? 6 : 2;
 
     // Factor 2: Rain Forecast Probability (max 30 points)
@@ -415,6 +478,17 @@ const Weather = (() => {
       total = Math.min(total, 50);
     } else if (actualRainNow < 1) {
       total = Math.min(total, 70);
+    }
+
+    // Second opinion: if GFS, ICON, and ECMWF all independently agree it's
+    // dry, that's strong evidence — cap the score even lower. If they're
+    // mixed/disagreeing, leave as-is. If all 3 agree it IS raining, trust it.
+    if (consensus && consensus.totalModels >= 2) {
+      if (consensus.consensus === 'dry') {
+        total = Math.min(total, 35);
+      } else if (consensus.consensus === 'rain') {
+        total = Math.max(total, 65);
+      }
     }
 
     // Risk level
@@ -532,6 +606,7 @@ const Weather = (() => {
   return {
     fetchWeather,
     fetchPointWeather,
+    fetchModelConsensus,
     calculateConfidence,
     generateReport,
     buildTelegramMessage,
