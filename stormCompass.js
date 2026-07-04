@@ -66,9 +66,11 @@ const StormCompass = (() => {
    * @returns {Object} Risk classification
    */
   function classifyRisk(data) {
-    const { rainProb, weatherCode, cloudCover } = data;
+    const { rainProb, weatherCode, cloudCover, rain } = data;
+    const actualRain = rain || 0; // mm/h actually measured right now at this point
 
-    if (weatherCode >= 95 || rainProb >= 90) {
+    // EXTREME / STORM — only when rain is actually being measured, not just forecast
+    if (actualRain >= 4 || (weatherCode >= 95 && actualRain > 0.2)) {
       return {
         level: 'extreme',
         label: 'EXTREME',
@@ -78,7 +80,7 @@ const StormCompass = (() => {
         score: 100
       };
     }
-    if (weatherCode >= 61 || rainProb >= 60) {
+    if (actualRain >= 1 || (weatherCode >= 61 && actualRain > 0.1)) {
       return {
         level: 'high',
         label: 'HIGH',
@@ -88,7 +90,8 @@ const StormCompass = (() => {
         score: Math.round(60 + rainProb * 0.4)
       };
     }
-    if (weatherCode >= 51 || rainProb >= 35) {
+    // MODERATE — light rain already falling, OR forecast very strongly suggests imminent rain
+    if (actualRain > 0 || (weatherCode >= 51 && rainProb >= 60)) {
       return {
         level: 'moderate',
         label: 'MODERATE',
@@ -98,7 +101,7 @@ const StormCompass = (() => {
         score: Math.round(35 + rainProb * 0.5)
       };
     }
-    if (cloudCover >= 60 || rainProb >= 15) {
+    if (cloudCover >= 60 || rainProb >= 30) {
       return {
         level: 'low',
         label: 'LOW',
