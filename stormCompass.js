@@ -546,7 +546,41 @@ const StormCompass = (() => {
   }
 
   /* ── PUBLIC API ──────────────────────────────────────── */
+  function drawSweepOverlay(canvas, angleDeg) {
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const cx = W / 2, cy = H / 2 + 10;
+    const maxR = Math.min(W, H) / 2 - 52;
+    const rad = (angleDeg - 90) * (Math.PI / 180);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, maxR, rad - 0.5, rad, false);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(64,196,255,0.10)';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(rad) * maxR, cy + Math.sin(rad) * maxR);
+    ctx.strokeStyle = '#40C4FF';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#40C4FF';
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
   return {
+    return {
+    runScan,
+    drawCompass,
+    drawSweepOverlay,
+    buildSectorTableHTML,
+    calculateSummary
+  };
     SCAN_DIRECTIONS,
     runScan,
     classifyRisk,
