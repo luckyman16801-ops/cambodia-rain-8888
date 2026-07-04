@@ -501,6 +501,37 @@ const App = (() => {
   }
 
   /* ═══════════════════════════════════════════════════════
+     CLOCK-FACE SWEEP ANIMATION (runs on top of existing compasses)
+  ═══════════════════════════════════════════════════════ */
+  let stormSweepAngle = 0;
+  let stormSweepRunning = false;
+  function startStormSweep(canvas) {
+    if (stormSweepRunning) return;
+    stormSweepRunning = true;
+    function tick() {
+      StormCompass.drawCompass(canvas, state.compassData || []);
+      StormCompass.drawSweepOverlay(canvas, stormSweepAngle);
+      stormSweepAngle = (stormSweepAngle + 1.2) % 360;
+      requestAnimationFrame(tick);
+    }
+    tick();
+  }
+
+  let windSweepAngle = 0;
+  let windSweepRunning = false;
+  function startWindSweep(canvas) {
+    if (windSweepRunning) return;
+    windSweepRunning = true;
+    function tick() {
+      WindCompass.drawCompass(canvas, state.windCompassData || [], state.city);
+      WindCompass.drawSweepOverlay(canvas, windSweepAngle);
+      windSweepAngle = (windSweepAngle + 1.2) % 360;
+      requestAnimationFrame(tick);
+    }
+    tick();
+  }
+
+  /* ═══════════════════════════════════════════════════════
      STORM COMPASS
   ═══════════════════════════════════════════════════════ */
   async function runCompassScan() {
@@ -517,6 +548,7 @@ const App = (() => {
 
       // Draw canvas
       StormCompass.drawCompass(canvas, scanData);
+      startStormSweep(canvas);
 
       // Build sector table
       if (tableEl) tableEl.innerHTML = StormCompass.buildSectorTableHTML(scanData);
@@ -570,6 +602,7 @@ const App = (() => {
       state.windCompassData = scanData;
 
       WindCompass.drawCompass(canvas, scanData, state.city);
+      startWindSweep(canvas);
 
       if (tableEl) tableEl.innerHTML = WindCompass.buildSectorTableHTML(scanData);
 
