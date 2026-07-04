@@ -395,23 +395,26 @@ const Weather = (() => {
     const rawTotal = scores.cloud + scores.rain + scores.humidity +
                      scores.pressure + scores.wind + scores.sectors;
 
-    // WMO code override — thunderstorm codes push score up
+    // WMO code override — thunderstorm codes push score up, but ONLY count
+    // in full if rain is actually being measured right now (not just modeled
+    // for the wider grid cell around this point).
+    const actualRainNow = current.precipitation || 0;
     const wmoCode = current.weatherCode || 0;
     let bonus = 0;
     if (wmoCode >= 95) bonus = 20;
     else if (wmoCode >= 80) bonus = 15;
     else if (wmoCode >= 61) bonus = 10;
     else if (wmoCode >= 51) bonus = 5;
+    if (actualRainNow < 0.2) bonus = Math.round(bonus * 0.25); // dry here: model's storm code is likely a nearby cell, not overhead
 
     let total = Math.min(100, rawTotal + bonus);
 
     // Reality check: don't let humidity/cloud/forecast alone claim HIGH RISK
     // if no rain is actually falling right now at this location.
-    const actualRainNow = current.precipitation || 0;
-    if (actualRainNow === 0) {
-      total = Math.min(total, 55);
-    } else if (actualRainNow > 0 && actualRainNow < 0.5) {
-      total = Math.max(total, 60);
+    if (actualRainNow < 0.2) {
+      total = Math.min(total, 50);
+    } else if (actualRainNow < 1) {
+      total = Math.min(total, 70);
     }
 
     // Risk level
