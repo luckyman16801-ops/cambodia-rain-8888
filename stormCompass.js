@@ -545,7 +545,7 @@ const StormCompass = (() => {
     };
   }
 
-  /* ── PUBLIC API ──────────────────────────────────────── */
+  /* ── CLOCK-FACE SWEEP OVERLAY ────────────────────────── */
   function drawSweepOverlay(canvas, angleDeg) {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
@@ -573,18 +573,14 @@ const StormCompass = (() => {
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
+
+  /* ── PUBLIC API ──────────────────────────────────────── */
   return {
-    return {
-    runScan,
-    drawCompass,
-    drawSweepOverlay,
-    buildSectorTableHTML,
-    calculateSummary
-  };
     SCAN_DIRECTIONS,
     runScan,
     classifyRisk,
     drawCompass,
+    drawSweepOverlay,
     buildSectorTableHTML,
     calculateSummary,
     // For external access to last scan results
