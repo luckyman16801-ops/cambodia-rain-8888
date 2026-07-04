@@ -319,7 +319,66 @@ const Weather = (() => {
     }
   }
 
-  /* ── PARSE & STRUCTURE DATA ──────────────────────────── */
+  /**
+   * Fetch weather for MANY points in a single API call, using Open-Meteo's
+   * support for comma-separated lat/lon lists. Much faster and lighter than
+   * firing one fetch per point — used for multi-ring compass scans.
+   * @param {Array<[number,number]>} points - array of [lat, lon] pairs
+   * @returns {Array<Object>} one weather object per point, same shape as fetchPointWeather
+   */
+  async function fetchMultiPointWeather(points) {
+    if (!points.length) return [];
+
+    const params = new URLSearchParams({
+      latitude: points.map(p => p[0]).join(','),
+      longitude: points.map(p => p[1]).join(','),
+      current: 'weather_code,cloud_cover,rain,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+      hourly: 'precipitation_probability,weather_code,cloud_cover',
+      timezone: 'Asia/Bangkok',
+      wind_speed_unit: 'kmh',
+      forecast_days: 1
+    });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const neutral = () => ({ rainProb: 0, weatherCode: 0, cloudCover: 0, rain: 0, humidity: 0, windSpeed: 0, windGust: 0, windDeg: 0, windDir: 'N' });
+
+    try {
+      const response = await fetch(`${API_BASE}?${params}`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`API ${response.status}`);
+
+      const raw = await response.json();
+      // With multiple points, Open-Meteo returns an ARRAY of result objects
+      const arr = Array.isArray(raw) ? raw : [raw];
+
+      return points.map((_, i) => {
+        const item = arr[i];
+        if (!item) return neutral();
+        const hourlyIdx = getCurrentHourIndex(item.hourly?.time || []);
+        const windDeg = item.current?.wind_direction_10m ?? 0;
+        return {
+          rainProb: safeGet(item.hourly?.precipitation_probability, hourlyIdx),
+          weatherCode: item.current?.weather_code || 0,
+          cloudCover: item.current?.cloud_cover || 0,
+          rain: item.current?.rain || 0,
+          humidity: item.current?.relative_humidity_2m || 0,
+          windSpeed: item.current?.wind_speed_10m ?? 0,
+          windGust: item.current?.wind_gusts_10m ?? 0,
+          windDeg: windDeg,
+          windDir: windDirection(windDeg)
+        };
+      });
+
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error('[Weather] Multi-point fetch failed:', err);
+      return points.map(() => neutral());
+    }
+  }
+
+
 
   /**
    * Parse raw Open-Meteo response into a clean structured object
@@ -606,6 +665,7 @@ const Weather = (() => {
   return {
     fetchWeather,
     fetchPointWeather,
+    fetchMultiPointWeather,
     fetchModelConsensus,
     calculateConfidence,
     generateReport,
