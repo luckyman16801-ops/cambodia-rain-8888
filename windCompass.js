@@ -39,6 +39,9 @@ const WindCompass = (() => {
   const KM_TO_DEG_LAT = 1 / 111;
   const KM_TO_DEG_LON = 1 / 108;
 
+  // Same multi-ring distances as Storm Compass: 0.5km → 100km
+  const RINGS_KM = [0.5, 2, 5, 10, 20, 35, 50, 75, 100];
+
   /**
    * Calculate GPS coordinates for a direction + distance from a given center
    */
@@ -118,6 +121,14 @@ const WindCompass = (() => {
    * @param {number} [centerLon] - defaults to Phnom Penh
    * @returns {Promise<Array>} Scan results per direction
    */
+  /**
+   * Run the full 16-direction wind scan around a center point, checking
+   * RINGS_KM distances (0.5km → 100km) along each direction in one batched
+   * API call, then finding the real distance to the nearest strong wind.
+   * @param {number} [centerLat] - defaults to Phnom Penh
+   * @param {number} [centerLon] - defaults to Phnom Penh
+   * @returns {Promise<Array>} Scan results per direction
+   */
   async function runScan(centerLat, centerLon) {
     if (isScanning) return lastScanData;
     isScanning = true;
@@ -126,39 +137,40 @@ const WindCompass = (() => {
     const lon = typeof centerLon === 'number' ? centerLon : HOME_LON;
     lastCenter = { lat, lon };
 
-    const scanPromises = SCAN_DIRECTIONS.map(async (sd) => {
-      const pt50  = scanPoint(lat, lon, sd.deg, 50);
-      const pt100 = scanPoint(lat, lon, sd.deg, 100);
-
-      const [data50, data100] = await Promise.allSettled([
-        Weather.fetchPointWeather(pt50[0], pt50[1]),
-        Weather.fetchPointWeather(pt100[0], pt100[1])
-      ]);
-
-      const d50  = data50.status  === 'fulfilled' ? data50.value  : defaultPoint();
-      const d100 = data100.status === 'fulfilled' ? data100.value : defaultPoint();
-
-      const risk50  = classifyWind(d50.windSpeed, d50.windGust);
-      const risk100 = classifyWind(d100.windSpeed, d100.windGust);
-
-      const dominantRisk = risk50.score >= risk100.score ? risk50 : risk100;
-      const dominantDist = risk50.score >= risk100.score ? 50 : 100;
-      const dominantPt   = risk50.score >= risk100.score ? d50 : d100;
-
-      return {
-        dir: sd.dir,
-        label: sd.label,
-        deg: sd.deg,
-        d50:   { ...d50,  risk: risk50,  km: 50 },
-        d100:  { ...d100, risk: risk100, km: 100 },
-        dominant: { ...dominantRisk, km: dominantDist, windDeg: dominantPt.windDeg, windDir: dominantPt.windDir },
-        windSpeed: Math.max(d50.windSpeed, d100.windSpeed),
-        windGust:  Math.max(d50.windGust, d100.windGust)
-      };
+    const flatPoints = [];
+    SCAN_DIRECTIONS.forEach(sd => {
+      RINGS_KM.forEach(km => flatPoints.push(scanPoint(lat, lon, sd.deg, km)));
     });
 
     try {
-      lastScanData = await Promise.all(scanPromises);
+      const flatData = await Weather.fetchMultiPointWeather(flatPoints);
+
+      lastScanData = SCAN_DIRECTIONS.map((sd, dirIdx) => {
+        const offset = dirIdx * RINGS_KM.length;
+        const rings = RINGS_KM.map((km, i) => {
+          const d = flatData[offset + i] || defaultPoint();
+          return { ...d, km, risk: classifyWind(d.windSpeed, d.windGust) };
+        });
+
+        // Walk outward from closest ring, find the first one with real strong wind
+        const windRing = rings.find(r => r.risk.level === 'moderate' || r.risk.level === 'high' || r.risk.level === 'extreme');
+        const nearestWindKm = windRing ? windRing.km : null;
+        const bestRing = windRing || [...rings].sort((a, b) => b.risk.score - a.risk.score)[0];
+
+        const maxSpeed = Math.max(...rings.map(r => r.windSpeed || 0));
+        const maxGust = Math.max(...rings.map(r => r.windGust || 0));
+
+        return {
+          dir: sd.dir,
+          label: sd.label,
+          deg: sd.deg,
+          rings,
+          nearestWindKm,
+          dominant: { ...bestRing.risk, km: bestRing.km, windDeg: bestRing.windDeg, windDir: bestRing.windDir },
+          windSpeed: maxSpeed,
+          windGust: maxGust
+        };
+      });
     } catch (err) {
       console.error('[WindCompass] Scan error:', err);
       lastScanData = [];
@@ -202,8 +214,9 @@ const WindCompass = (() => {
 
     // ── RINGS ──────────────────────────────────────────
     const rings = [
-      { frac: 0.33, label: '33km' },
-      { frac: 0.67, label: '67km' },
+      { frac: 0.05, label: '5km' },
+      { frac: 0.20, label: '20km' },
+      { frac: 0.50, label: '50km' },
       { frac: 1.0,  label: '100km' }
     ];
 
@@ -331,69 +344,80 @@ const WindCompass = (() => {
   }
 
   /**
-   * Draw wind arrows for the 50km and 100km scan points.
+   * Draw the wind arrow at the dominant (nearest strong-wind, or highest-risk
+   * if calm) ring distance for this direction.
    * Arrow points in the direction the wind is blowing TOWARD
    * (meteorological windDeg is the direction it blows FROM, so we add 180°).
    * Arrow length scales with speed.
    */
   function drawWindArrows(ctx, cx, cy, maxR, sector) {
-    [sector.d50, sector.d100].forEach(pt => {
-      const frac = pt.km / 100;
-      const angle = (sector.deg - 90) * (Math.PI / 180);
-      const r = frac * maxR;
-      const px = cx + Math.cos(angle) * r;
-      const py = cy + Math.sin(angle) * r;
+    const pt = sector.dominant;
+    const frac = Math.min(pt.km / 100, 1);
+    const angle = (sector.deg - 90) * (Math.PI / 180);
+    const r = frac * maxR;
+    const px = cx + Math.cos(angle) * r;
+    const py = cy + Math.sin(angle) * r;
 
-      const risk = pt.risk;
-      const speed = pt.windSpeed || 0;
-      const arrowLen = 10 + Math.min(speed, 60) * 0.35;
-      const flowDeg = (pt.windDeg || 0) + 180; // direction wind is blowing TOWARD
-      const flowRad = ((flowDeg - 90) * Math.PI) / 180;
+    const risk = pt;
+    const speed = sector.windSpeed || 0;
+    const arrowLen = 10 + Math.min(speed, 60) * 0.35;
+    const flowDeg = (pt.windDeg || 0) + 180;
+    const flowRad = ((flowDeg - 90) * Math.PI) / 180;
 
-      // Glow
-      const glow = ctx.createRadialGradient(px, py, 1, px, py, arrowLen + 8);
-      const glowA = risk.score > 60 ? 0.3 : risk.score > 30 ? 0.18 : 0.1;
-      glow.addColorStop(0, risk.color + Math.round(glowA * 255).toString(16).padStart(2, '0'));
-      glow.addColorStop(1, 'transparent');
-      ctx.beginPath();
-      ctx.arc(px, py, arrowLen + 8, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
-      ctx.fill();
+    // Glow
+    const glow = ctx.createRadialGradient(px, py, 1, px, py, arrowLen + 8);
+    const glowA = risk.score > 60 ? 0.3 : risk.score > 30 ? 0.18 : 0.1;
+    glow.addColorStop(0, risk.color + Math.round(glowA * 255).toString(16).padStart(2, '0'));
+    glow.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(px, py, arrowLen + 8, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
 
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(flowRad);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(flowRad);
 
-      // Arrow shaft
-      ctx.beginPath();
-      ctx.moveTo(-arrowLen / 2, 0);
-      ctx.lineTo(arrowLen / 2, 0);
-      ctx.strokeStyle = risk.color;
-      ctx.lineWidth = pt.km === 50 ? 2.4 : 2;
-      ctx.lineCap = 'round';
-      ctx.stroke();
+    // Arrow shaft
+    ctx.beginPath();
+    ctx.moveTo(-arrowLen / 2, 0);
+    ctx.lineTo(arrowLen / 2, 0);
+    ctx.strokeStyle = risk.color;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
 
-      // Arrowhead
-      ctx.beginPath();
-      ctx.moveTo(arrowLen / 2, 0);
-      ctx.lineTo(arrowLen / 2 - 7, -4.5);
-      ctx.lineTo(arrowLen / 2 - 7, 4.5);
-      ctx.closePath();
-      ctx.fillStyle = risk.color;
-      ctx.fill();
+    // Arrowhead
+    ctx.beginPath();
+    ctx.moveTo(arrowLen / 2, 0);
+    ctx.lineTo(arrowLen / 2 - 7, -4.5);
+    ctx.lineTo(arrowLen / 2 - 7, 4.5);
+    ctx.closePath();
+    ctx.fillStyle = risk.color;
+    ctx.fill();
 
-      ctx.restore();
+    ctx.restore();
 
-      // Speed label above the arrow
-      if (speed >= 6) {
-        ctx.font = 'bold 10px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillStyle = risk.color;
-        ctx.fillText(`${Math.round(speed)}km/h`, px, py - (arrowLen + 6));
-        ctx.textBaseline = 'alphabetic';
-      }
-    });
+    // Distance + speed label above the arrow
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = risk.color;
+    const distLabel = sector.nearestWindKm !== null
+      ? `${Math.round(speed)}km/h @ ${sector.nearestWindKm}km`
+      : `${Math.round(speed)}km/h`;
+    ctx.fillText(distLabel, px, py - (arrowLen + 6));
+    ctx.textBaseline = 'alphabetic';
+
+    // Ray from center to the dominant point
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(px, py);
+    ctx.strokeStyle = risk.color + (sector.nearestWindKm !== null ? '50' : '20');
+    ctx.setLineDash(sector.nearestWindKm !== null ? [] : [4, 5]);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   /* ── BUILD SECTOR TABLE ──────────────────────────────── */
@@ -407,13 +431,16 @@ const WindCompass = (() => {
       const risk = sector.dominant;
       const spd = Math.round(sector.windSpeed);
       const gst = Math.round(sector.windGust);
+      const distText = sector.nearestWindKm !== null
+        ? `Strong wind at ${sector.nearestWindKm}km`
+        : `Calm to 100km`;
 
       return `
         <div class="sector-row ${risk.bgClass}">
           <span class="sector-dir">${sector.dir}</span>
           <div class="sector-info">
             <span class="sector-type">${risk.windType}</span>
-            <span class="sector-sub">${spd} km/h · Gust ${gst} km/h · from ${risk.windDir} · ${risk.km}km</span>
+            <span class="sector-sub">${distText} · ${spd} km/h · Gust ${gst} km/h · from ${risk.windDir}</span>
           </div>
           <span class="sector-risk ${risk.bgClass}">${risk.label}</span>
         </div>
@@ -433,6 +460,11 @@ const WindCompass = (() => {
     const avgSpeed = scanData.reduce((sum, s) => sum + s.windSpeed, 0) / scanData.length;
     const maxGustSector = [...scanData].sort((a, b) => b.windGust - a.windGust)[0];
 
+    const withWind = scanData.filter(s => s.nearestWindKm !== null);
+    const closestWind = withWind.length
+      ? withWind.reduce((a, b) => (a.nearestWindKm < b.nearestWindKm ? a : b))
+      : null;
+
     const overallScore = scanData.reduce((sum, s) => sum + s.dominant.score, 0) / scanData.length;
     const overallRisk = overallScore >= 70 ? '🔴 STRONG' :
                         overallScore >= 40 ? '🟡 MODERATE' : '🟢 LIGHT/CALM';
@@ -442,6 +474,7 @@ const WindCompass = (() => {
       strongest: strongest ? `${strongest.dir} — ${strongest.dominant.label} (${Math.round(strongest.windSpeed)} km/h)` : 'None',
       avgSpeed: `${avgSpeed.toFixed(1)} km/h`,
       maxGust: maxGustSector ? `${Math.round(maxGustSector.windGust)} km/h (${maxGustSector.dir})` : '--',
+      nearestStrongWind: closestWind ? `${closestWind.dir} (${closestWind.nearestWindKm}km)` : 'None within 100km',
       risk: overallRisk
     };
   }
