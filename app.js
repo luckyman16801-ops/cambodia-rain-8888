@@ -637,7 +637,38 @@ const App = (() => {
     };
   }
 
-  function initRadar() {
+  /* ── RainViewer live frame lookup ──────────────────────
+     RainViewer tiles require a real timestamp path (fetched from
+     their API), not a literal "nowcast" string. Cache it 5 min. */
+  let cachedRadarFramePath = null;
+  let radarFrameCacheTime = 0;
+
+  async function getLatestRadarFrame() {
+    const now = Date.now();
+    if (cachedRadarFramePath && (now - radarFrameCacheTime) < 5 * 60 * 1000) {
+      return cachedRadarFramePath;
+    }
+    try {
+      const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      const data = await res.json();
+      const frames = (data.radar?.nowcast?.length ? data.radar.nowcast : data.radar?.past) || [];
+      const latest = frames[frames.length - 1];
+      if (!latest) return null;
+      cachedRadarFramePath = data.host + latest.path;
+      radarFrameCacheTime = now;
+      return cachedRadarFramePath;
+    } catch (err) {
+      console.error('[App] RainViewer frame fetch failed:', err);
+      return null;
+    }
+  }
+
+  function buildRadarTileUrl(framePath) {
+    // size 256px, color scheme 2 (universal blue), smoothing+snow options 1_1
+    return `${framePath}/256/{z}/{x}/{y}/2/1_1.png`;
+  }
+
+  async function initRadar() {
     if (state.mapObj) return; // Already initialized
 
     const mapEl = document.getElementById('radar-map');
@@ -658,9 +689,10 @@ const App = (() => {
       maxZoom: 19
     }).addTo(map);
 
-    // Rain radar layer (RainViewer)
+    // Rain radar layer (RainViewer) — fetch the real current frame first
+    const framePath = await getLatestRadarFrame();
     const radarTiles = L.tileLayer(
-      'https://tilecache.rainviewer.com/v2/radar/nowcast/{z}/{x}/{y}/4/1_1.png',
+      framePath ? buildRadarTileUrl(framePath) : 'https://tilecache.rainviewer.com/v2/radar/nowcast_placeholder/{z}/{x}/{y}/2/1_1.png',
       {
         opacity: 0.7,
         attribution: 'RainViewer',
@@ -687,9 +719,23 @@ const App = (() => {
     state.radarLayer = radarTiles;
     state.circleLayer = circle;
     state.currentMapLayer = 'rain';
+
+    // Refresh the radar tile layer every 10 min with the newest frame
+    setInterval(async () => {
+      if (state.currentMapLayer !== 'rain') return;
+      const newFrame = await getLatestRadarFrame();
+      if (!newFrame || !state.mapObj || !state.radarLayer) return;
+      state.mapObj.removeLayer(state.radarLayer);
+      state.radarLayer = L.tileLayer(buildRadarTileUrl(newFrame), {
+        opacity: 0.7,
+        attribution: 'RainViewer',
+        maxZoom: 15
+      });
+      state.radarLayer.addTo(state.mapObj);
+    }, 10 * 60 * 1000);
   }
 
-  function setRadarLayer(type) {
+  async function setRadarLayer(type) {
     if (!state.mapObj) return;
 
     document.getElementById('radar-btn-rain')?.classList.toggle('active', type === 'rain');
@@ -700,8 +746,9 @@ const App = (() => {
     }
 
     if (type === 'rain') {
+      const framePath = await getLatestRadarFrame();
       state.radarLayer = L.tileLayer(
-        'https://tilecache.rainviewer.com/v2/radar/nowcast/{z}/{x}/{y}/4/1_1.png',
+        framePath ? buildRadarTileUrl(framePath) : 'https://tilecache.rainviewer.com/v2/radar/nowcast_placeholder/{z}/{x}/{y}/2/1_1.png',
         { opacity: 0.7, attribution: 'RainViewer', maxZoom: 15 }
       );
     } else {
